@@ -1,18 +1,36 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Search, RefreshCw, CheckCircle, Plus } from "lucide-react";
+import { Search, RefreshCw, CheckCircle, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import PlayerPopup from "./PlayerPopup";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from "@/components/ui/select";
+import PlayerPopupV2 from "./PlayerPopupV2";
 
 export type Player = {
-  id: number;
+  id: string;
+  full_name: string;
   first_name: string;
   last_name: string;
-  team: string;
+  team: string | null;
   fantasy_team?: string | null;
-  fantasy_team_id?: number | null;
+  fantasy_team_id?: string | null;
   active?: boolean;
 };
 
@@ -23,42 +41,55 @@ interface PlayersProps {
 
 export default function Players({ onNavigate, onAddPlayer }: PlayersProps) {
   const [players, setPlayers] = useState<Player[]>([]);
+  const [teams, setTeams] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
 
-  console.log("✅ Players component rendered. Players:", players);
+  // Modal states
+  const [assignOpen, setAssignOpen] = useState(false);
+  const [assignTarget, setAssignTarget] = useState<Player | null>(null);
+  const [selectedTeamId, setSelectedTeamId] = useState<string>("");
+  const [assignSubmitting, setAssignSubmitting] = useState(false);
 
-  // ✅ Load players through proxy route (avoids Supabase CORS)
+  // ---------------------------------------------------------
+  // Load Players
+  // ---------------------------------------------------------
   const loadPlayers = async () => {
     try {
       setLoading(true);
       setError(null);
 
-      // Keep your same query, just include 'active' in the select
+      console.log("blahhh")
+
       const res = await fetch(
-        `/api/supabase-proxy?path=players?select=id,first_name,last_name,team,fantasy_team_id,active&limit=100`
+        `/api/supabase-proxy?path=players?select=id,full_name,team,fantasy_team_id,active&limit=500`
       );
 
-      if (!res.ok) {
-        throw new Error(`Failed to fetch players: ${res.statusText}`);
-      }
+      if (!res.ok) throw new Error(`Failed to fetch players: ${res.statusText}`);
 
-      const data = await res.json();
+      const json = await res.json();
+      const data = Array.isArray(json.data)
+        ? json.data
+        : Array.isArray(json.data?.data)
+        ? json.data.data
+        : [];
 
-      // Remove mock PPG, map real fields only
-      const mappedPlayers = data.map((p: any) => ({
-        id: p.id,
-        first_name: p.first_name,
-        last_name: p.last_name,
-        team: p.team,
-        fantasy_team_id: p.fantasy_team_id,
-        active: p.active ?? false,
-      }));
+      const mappedPlayers = data.map((p: any) => {
+        const [first_name, ...rest] = (p.full_name || "").split(" ");
+        return {
+          id: p.id,
+          full_name: p.full_name,
+          first_name,
+          last_name: rest.join(" "),
+          team: p.team ?? null,
+          fantasy_team_id: p.fantasy_team_id ?? null,
+          active: p.active ?? false,
+        };
+      });
 
       setPlayers(mappedPlayers);
-      console.log("✅ Players loaded:", mappedPlayers);
     } catch (err) {
       console.error("Error loading players:", err);
       setError(
@@ -71,28 +102,143 @@ export default function Players({ onNavigate, onAddPlayer }: PlayersProps) {
     }
   };
 
+  // ---------------------------------------------------------
+  // Load Teams
+  // ---------------------------------------------------------
+  const loadTeams = async () => {
+    try {
+      const res = await fetch(`/api/supabase-proxy?path=teams?select=id,name`);
+      const json = await res.json();
+      const data = Array.isArray(json.data)
+        ? json.data
+        : Array.isArray(json.data?.data)
+        ? json.data.data
+        : [];
+      setTeams(data);
+    } catch (err) {
+      console.error("Error loading teams:", err);
+    }
+  };
+
   useEffect(() => {
     loadPlayers();
+    loadTeams();
   }, []);
 
+  // ---------------------------------------------------------
+  // Assign player to team — now uses proxy SELECT
+  // ---------------------------------------------------------
+  const handleAssignPlayer = async () => {
+    if (!assignTarget?.id || !selectedTeamId) return;
+    setAssignSubmitting(true);
+
+    try {
+      const playerId = assignTarget.id;
+      const season = "2025-2026";
+
+      // 1️⃣ Check if player already exists in roster for this season
+      const checkRes = await fetch("/api/supabase-proxy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          path: "rosters",
+          action: "select",
+          data: { player_id: playerId, season },
+        }),
+      });
+
+      const checkJson = await checkRes.json();
+      const existingRoster =
+        Array.isArray(checkJson.data) && checkJson.data.length > 0
+          ? checkJson.data[0]
+          : null;
+
+      let result;
+
+      // 2️⃣ If roster exists → update team_id, else insert new row
+      if (existingRoster) {
+        result = await fetch("/api/supabase-proxy", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            path: "rosters",
+            action: "update",
+            data: [{ id: existingRoster.id, team_id: selectedTeamId }],
+          }),
+        });
+      } else {
+        result = await fetch("/api/supabase-proxy", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            path: "rosters",
+            action: "insert",
+            data: [
+              {
+                player_id: playerId,
+                team_id: selectedTeamId,
+                season,
+              },
+            ],
+          }),
+        });
+      }
+
+      const resultJson = await result.json();
+      if (!result.ok)
+        throw new Error(resultJson.error || "Roster insert/update failed");
+
+      // 3️⃣ Update player's fantasy_team_id
+      const upsertRes = await fetch("/api/supabase-proxy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          path: "players",
+          action: "update",
+          data: [{ id: playerId, fantasy_team_id: selectedTeamId }],
+        }),
+      });
+      const upsertJson = await upsertRes.json();
+      if (!upsertRes.ok)
+        throw new Error(upsertJson.error || "Failed to update player");
+
+      // ✅ Done
+      setAssignOpen(false);
+      setAssignTarget(null);
+      setSelectedTeamId("");
+      await loadPlayers();
+    } catch (err) {
+      console.error("Error assigning player:", err);
+      alert(
+        `Failed to assign player: ${
+          err instanceof Error ? err.message : String(err)
+        }`
+      );
+    } finally {
+      setAssignSubmitting(false);
+    }
+  };
+
+  // ---------------------------------------------------------
+  // UI helpers
+  // ---------------------------------------------------------
   const handleSearch = () => loadPlayers();
   const handleRefresh = () => {
     setSearchTerm("");
     loadPlayers();
   };
-
   const filteredPlayers = searchTerm
-    ? players.filter((player) => {
-        const fullName = `${player.first_name} ${player.last_name}`.toLowerCase();
-        return fullName.includes(searchTerm.toLowerCase());
-      })
+    ? players.filter((p) =>
+        p.full_name.toLowerCase().includes(searchTerm.toLowerCase())
+      )
     : players;
-
   const handlePlayerClick = (player: Player) => setSelectedPlayer(player);
   const handleClosePopup = () => setSelectedPlayer(null);
-
   const isRostered = (fullName: string) => false;
 
+  // ---------------------------------------------------------
+  // Render
+  // ---------------------------------------------------------
   return (
     <div className="bg-white rounded-lg shadow-md p-3 sm:p-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 sm:mb-6 gap-3 sm:gap-4">
@@ -153,15 +299,13 @@ export default function Players({ onNavigate, onAddPlayer }: PlayersProps) {
                     Fantasy Team
                   </th>
                   <th className="px-2 sm:px-4 py-2 sm:py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    Add
+                    Assign
                   </th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {filteredPlayers.map((player) => {
-                  const fullName = `${player.first_name} ${player.last_name}`;
-                  const rostered = isRostered(fullName);
-
+                  const rostered = isRostered(player.full_name);
                   return (
                     <tr key={player.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-2 sm:px-4 py-2 sm:py-3">
@@ -171,7 +315,7 @@ export default function Players({ onNavigate, onAddPlayer }: PlayersProps) {
                         >
                           <div className="flex items-center space-x-1 sm:space-x-2">
                             <span className="font-medium text-gray-900 text-xs sm:text-sm">
-                              {fullName}
+                              {player.full_name}
                             </span>
                             {rostered && (
                               <CheckCircle className="h-3 w-3 sm:h-4 sm:w-4 text-green-600 flex-shrink-0" />
@@ -201,14 +345,18 @@ export default function Players({ onNavigate, onAddPlayer }: PlayersProps) {
                         )}
                       </td>
                       <td className="px-2 sm:px-4 py-2 sm:py-3 text-center">
-                        {!rostered && onAddPlayer && (
+                        {!rostered && (
                           <Button
                             size="sm"
-                            onClick={() => onAddPlayer(player)}
                             className="bg-blue-600 hover:bg-blue-700 text-white h-7 w-7 sm:h-8 sm:w-8 p-0"
-                            title="Add to team"
+                            title="Assign to team"
+                            onClick={() => {
+                              setAssignTarget(player);
+                              setSelectedTeamId(player.fantasy_team_id ?? "");
+                              setAssignOpen(true);
+                            }}
                           >
-                            <Plus className="h-3 w-3 sm:h-4 sm:w-4" />
+                            <ChevronDown className="h-3 w-3 sm:h-4 sm:w-4" />
                           </Button>
                         )}
                       </td>
@@ -221,7 +369,78 @@ export default function Players({ onNavigate, onAddPlayer }: PlayersProps) {
         </>
       )}
 
-      {selectedPlayer && <PlayerPopup player={selectedPlayer} onClose={handleClosePopup} />}
+      {selectedPlayer && (
+        <PlayerPopupV2 player={selectedPlayer} onClose={handleClosePopup} />
+      )}
+
+      {/* ✅ Assign-to-team Modal */}
+      <Dialog open={assignOpen} onOpenChange={(o) => setAssignOpen(o)}>
+        <DialogContent className="max-w-md bg-white rounded-xl shadow-xl">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-bold text-gray-800">
+              Assign Player to Team
+            </DialogTitle>
+            <DialogDescription className="text-gray-600">
+              Choose a fantasy team to add{" "}
+              <span className="font-semibold text-gray-900">
+                {assignTarget?.full_name}
+              </span>{" "}
+              to the 2025–2026 roster.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 mt-2">
+            <div className="grid gap-2">
+              <Label htmlFor="team" className="text-gray-700">
+                Team
+              </Label>
+              <Select
+                value={selectedTeamId}
+                onValueChange={(v) => setSelectedTeamId(v)}
+              >
+                <SelectTrigger
+                  id="team"
+                  className="bg-white border border-gray-300 text-gray-800"
+                >
+                  <SelectValue placeholder="Select a team" />
+                </SelectTrigger>
+
+                <SelectContent className="bg-white border border-gray-200 shadow-lg rounded-md text-gray-800 max-h-48 overflow-y-auto">
+                  {teams.map((t) => (
+                    <SelectItem
+                      key={t.id}
+                      value={t.id}
+                      className="hover:bg-gray-50 text-gray-800 cursor-pointer"
+                    >
+                      {t.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 mt-4">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setAssignOpen(false);
+                setAssignTarget(null);
+                setSelectedTeamId("");
+              }}
+              disabled={assignSubmitting}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleAssignPlayer}
+              disabled={!selectedTeamId || assignSubmitting}
+            >
+              {assignSubmitting ? "Assigning..." : "Assign"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

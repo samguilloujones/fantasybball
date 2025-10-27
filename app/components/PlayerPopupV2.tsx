@@ -10,7 +10,7 @@ interface PlayerPopupProps {
   onClose: () => void;
 }
 
-export default function PlayerPopup({ player, onClose }: PlayerPopupProps) {
+export default function PlayerPopupV2({ player, onClose }: PlayerPopupProps) {
   const [stats, setStats] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -30,12 +30,6 @@ export default function PlayerPopup({ player, onClose }: PlayerPopupProps) {
       const cachedSeasons: any[] = [];
       const missingSeasons: number[] = [];
 
-      // 1️⃣ Check which seasons already exist in Supabase
-      //Todo: This is getting a 500
-
-      // 2️⃣ If all cached, no fetch required
-
-
       const fetchedSeasons: any[] = [];
 
       // 3️⃣ Fetch missing seasons using the right API (v1 or v2)
@@ -46,11 +40,11 @@ export default function PlayerPopup({ player, onClose }: PlayerPopupProps) {
           ? "https://api.balldontlie.io/v2"
           : "https://www.balldontlie.io/api/v1";
 
-        const url = `${baseUrl}/season_averages?season=${season}&player_ids[]=${player.id}`;
-        const res = await fetch(url, {
-          headers: isV2
-            ? { Authorization: `Bearer ${process.env.NEXT_PUBLIC_BDL_API_KEY ?? ""}` }
-            : {},
+        const fullName = `${player.first_name} ${player.last_name}`
+        const res = await fetch("/api/player-stats", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ player_name: fullName }),
         });
 
         if (!res.ok) {

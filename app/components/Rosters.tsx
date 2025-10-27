@@ -1,12 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/use-toast";
-import { Users, PlusCircle, Search, XCircle, Pencil, Save, X } from "lucide-react";
+import {
+  Users,
+  PlusCircle,
+  Search,
+  XCircle,
+  Pencil,
+  Save,
+  X,
+} from "lucide-react";
 
 interface Team {
   id: string;
@@ -16,96 +24,171 @@ interface Team {
 interface RosterSlot {
   id: string;
   team_id: string;
-  player_id: number | null;
+  player_id: string | null;
   season: string;
   slot_number: number;
   added_at: string | null;
 }
 
 interface Player {
-  id: number;
+  id: string;
   full_name: string;
-  team: string;
+  team: string | null;
   position?: string | null;
+  active?: boolean | null;
 }
+
+const SEASON = "2025-2026";
+const TOTAL_SLOTS = 10; // 1..8 active, 9..10 IR
 
 export default function Rosters() {
   const { toast } = useToast();
+
+  // data
   const [teams, setTeams] = useState<Team[]>([]);
   const [rosters, setRosters] = useState<RosterSlot[]>([]);
-  const [players, setPlayers] = useState<Record<number, Player>>({});
+  const [playersById, setPlayersById] = useState<Record<string, Player>>({});
+  const [allPlayers, setAllPlayers] = useState<Player[]>([]);
+
+  // ui state
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<Player[]>([]);
   const [selectedRosterId, setSelectedRosterId] = useState<string | null>(null);
-  const [season] = useState("2025-2026");
-  const [rosteredPlayers, setRosteredPlayers] = useState<Set<number>>(new Set());
-
-  // 🆕 Edit team name state
+  const [rosteredPlayers, setRosteredPlayers] = useState<Set<string>>(new Set());
   const [editingTeamId, setEditingTeamId] = useState<string | null>(null);
   const [editedName, setEditedName] = useState("");
   const [savingName, setSavingName] = useState(false);
 
-  // ✅ Load teams + rosters + players
+  // ---------- initial load ----------
   useEffect(() => {
-    const fetchData = async () => {
+    const load = async () => {
       setLoading(true);
       try {
-        const teamsRes = await fetch(`/api/supabase-proxy?path=teams?select=id,name&order=name`);
-        const teamData = await teamsRes.json();
+        // fetch teams, rosters, players
+        const [teamsRes, rostersRes, playersRes] = await Promise.all([
+          fetch(`/api/supabase-proxy?path=teams?select=id,name&order=name`),
+          fetch(
+            `/api/supabase-proxy?path=rosters?select=*&season=eq.${SEASON}&order=slot_number`
+          ),
+          // pull a larger set once; we’ll filter locally like Players page
+          fetch(
+            `/api/supabase-proxy?path=players?select=id,full_name,team,position,active&order=full_name.asc&limit=10000`
+          ),
+        ]);
 
-        const rostersRes = await fetch(
-          `/api/supabase-proxy?path=rosters?select=*&season=eq.${season}&order=slot_number`
-        );
-        const rosterData = await rostersRes.json();
+        const [teamsJson, rostersJson, playersJson] = await Promise.all([
+          teamsRes.json(),
+          rostersRes.json(),
+          playersRes.json(),
+        ]);
 
-        const playersRes = await fetch(
-          `/api/supabase-proxy?path=players?select=id,full_name,team,position`
-        );
-        const playerData = await playersRes.json();
+        const teamData: Team[] = Array.isArray(teamsJson.data) ? teamsJson.data : [];
+        const rosterData: RosterSlot[] = Array.isArray(rostersJson.data)
+          ? rostersJson.data
+          : [];
+        const playerData: Player[] = Array.isArray(playersJson.data)
+          ? playersJson.data
+          : [];
 
-        setTeams(teamData || []);
-        setRosters(rosterData || []);
+        setTeams(teamData);
+        setRosters(rosterData);
 
-        const playerMap = (playerData || []).reduce((acc: Record<number, Player>, p: Player) => {
-          acc[p.id] = p;
+        const byId = playerData.reduce((acc: Record<string, Player>, p) => {
+          if (p.id) acc[String(p.id)] = p;
           return acc;
         }, {});
-        setPlayers(playerMap);
+        setPlayersById(byId);
+        setAllPlayers(playerData);
 
         const rosteredIds = new Set(
-          (rosterData || [])
-            .filter((r: any) => r.player_id !== null)
-            .map((r: any) => r.player_id as number)
+          rosterData.filter((r) => r.player_id).map((r) => String(r.player_id))
         );
         setRosteredPlayers(rosteredIds);
+
+        // ensure each team has 10 slots (1..10)
+        await ensureAllTeamSlots(teamData, rosterData);
       } catch (err) {
         console.error("Error loading rosters:", err);
       } finally {
         setLoading(false);
       }
     };
-    fetchData();
-  }, [season]);
 
-  // 🔍 Search players
-  const handleSearch = async (query: string) => {
+    load();
+  }, []);
+
+  // ---------- ensure slots for all teams ----------
+  const ensureAllTeamSlots = async (teamData: Team[], rosterData: RosterSlot[]) => {
+    // determine missing for each team
+    const inserts: Array<{ team_id: string; season: string; slot_number: number }> = [];
+
+    for (const t of teamData) {
+      const teamSlots = rosterData.filter((r) => r.team_id === t.id);
+      const have = new Set(teamSlots.map((r) => r.slot_number));
+      for (let slot = 1; slot <= TOTAL_SLOTS; slot++) {
+        if (!have.has(slot)) {
+          inserts.push({ team_id: t.id, season: SEASON, slot_number: slot });
+        }
+      }
+    }
+
+    if (!inserts.length) return;
+
+    // bulk insert missing rows
+    const res = await fetch("/api/supabase-proxy", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: "rosters", action: "insert", data: inserts }),
+    });
+
+    const json = await res.json();
+    if (!res.ok) {
+      console.error("Failed creating missing slots:", json.error || json);
+      return;
+    }
+
+    // refetch rosters once to reflect inserts
+    const refetch = await fetch(
+      `/api/supabase-proxy?path=rosters?select=*&season=eq.${SEASON}&order=slot_number`
+    );
+    const refetchJson = await refetch.json();
+    const refreshed: RosterSlot[] = Array.isArray(refetchJson.data) ? refetchJson.data : [];
+    setRosters(refreshed);
+  };
+
+  // ---------- search (client-side match like Players page) ----------
+  const handleSearch = (query: string) => {
     setSearchQuery(query);
-    if (query.trim().length < 2) {
+    const q = query.trim().toLowerCase();
+
+    if (q.length < 2) {
       setSearchResults([]);
       return;
     }
-    const res = await fetch(
-      `/api/supabase-proxy?path=players?select=id,full_name,team,position&ilike=full_name.%25${query}%25&limit=10`
-    );
-    const data = await res.json();
-    setSearchResults(data || []);
+
+    // Same behavior as players page: simple substring anywhere in full_name.
+    // Prefer active players; then sort by startsWith -> includes; then alphabetically.
+    const base = allPlayers.filter((p) => (p.active ?? true) && p.full_name);
+
+    const filtered = base.filter((p) => p.full_name!.toLowerCase().includes(q));
+
+    const startsWithFirst = filtered.sort((a, b) => {
+      const aName = a.full_name!.toLowerCase();
+      const bName = b.full_name!.toLowerCase();
+      const aStarts = aName.startsWith(q) ? 0 : 1;
+      const bStarts = bName.startsWith(q) ? 0 : 1;
+      if (aStarts !== bStarts) return aStarts - bStarts;
+      return aName.localeCompare(bName);
+    });
+
+    setSearchResults(startsWithFirst.slice(0, 25));
   };
 
-  // ➕ Add player
+  // ➕ Add player to a slot
   const handleAddPlayer = async (rosterId: string, player: Player) => {
     try {
-      if (rosteredPlayers.has(player.id)) {
+      if (rosteredPlayers.has(String(player.id))) {
         toast({
           title: "Player already rostered",
           description: "That player is already on another team this season.",
@@ -114,17 +197,24 @@ export default function Rosters() {
         return;
       }
 
-      const res = await fetch(`/api/supabase-proxy?path=rosters`, {
-        method: "PATCH",
+      const res = await fetch("/api/supabase-proxy", {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          player_id: player.id,
-          added_at: new Date().toISOString(),
-          id: rosterId,
+          path: "rosters",
+          action: "update",
+          data: [
+            {
+              id: rosterId,
+              player_id: player.id,
+              added_at: new Date().toISOString(),
+            },
+          ],
         }),
       });
 
-      if (!res.ok) throw new Error("Failed to update roster");
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Failed to update roster");
 
       setRosters((prev) =>
         prev.map((slot) =>
@@ -133,15 +223,17 @@ export default function Rosters() {
             : slot
         )
       );
-      setPlayers((prev) => ({ ...prev, [player.id]: player }));
-      setRosteredPlayers((prev) => new Set([...prev, player.id]));
+      setPlayersById((prev) => ({ ...prev, [player.id]: player }));
+      setRosteredPlayers((prev) => new Set([...prev, String(player.id)]));
+
+      // close modal
       setSelectedRosterId(null);
       setSearchQuery("");
       setSearchResults([]);
 
       toast({
         title: "Player Added",
-        description: `${player.full_name} has been added to your roster.`,
+        description: `${player.full_name} added to your roster.`,
         variant: "success",
       });
     } catch (error) {
@@ -154,24 +246,26 @@ export default function Rosters() {
     }
   };
 
-  // ❌ Remove player
+  // ❌ Remove player from a slot
   const handleRemovePlayer = async (rosterId: string) => {
     const slot = rosters.find((r) => r.id === rosterId);
     if (!slot || !slot.player_id) return;
 
-    const res = await fetch(`/api/supabase-proxy?path=rosters`, {
-      method: "PATCH",
+    const res = await fetch("/api/supabase-proxy", {
+      method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        player_id: null,
-        id: rosterId,
+        path: "rosters",
+        action: "update",
+        data: [{ id: rosterId, player_id: null }],
       }),
     });
 
+    const json = await res.json();
     if (!res.ok) {
       toast({
         title: "Error removing player",
-        description: "Could not remove player from roster.",
+        description: json.error || "Could not remove player from roster.",
         variant: "destructive",
       });
       return;
@@ -182,26 +276,28 @@ export default function Rosters() {
     );
     setRosteredPlayers((prev) => {
       const updated = new Set(prev);
-      updated.delete(slot.player_id!);
+      updated.delete(String(slot.player_id));
       return updated;
     });
 
-    toast({
-      title: "Player Removed",
-      description: "The player has been removed from your roster.",
-    });
+    toast({ title: "Player Removed", description: "Removed from your roster." });
   };
 
-  // 🆕 Save team name change
+  // 💾 Update team name
   const handleSaveTeamName = async (teamId: string) => {
     setSavingName(true);
     try {
-      const res = await fetch(`/api/supabase-proxy?path=teams?id=eq.${teamId}`, {
-        method: "PATCH",
+      const res = await fetch("/api/supabase-proxy", {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: editedName }),
+        body: JSON.stringify({
+          path: "teams",
+          action: "update",
+          data: [{ id: teamId, name: editedName }],
+        }),
       });
-      if (!res.ok) throw new Error("Failed to update team name");
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Failed to update team name");
 
       setTeams((prev) =>
         prev.map((t) => (t.id === teamId ? { ...t, name: editedName } : t))
@@ -217,6 +313,7 @@ export default function Rosters() {
     }
   };
 
+  // ---------- loading UI ----------
   if (loading) {
     return (
       <div className="space-y-6">
@@ -244,14 +341,19 @@ export default function Rosters() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Users className="w-5 h-5 text-green-600" />
-            Team Rosters – {season} Season
+            Team Rosters – {SEASON} Season
           </CardTitle>
-          <p className="text-sm text-gray-600">Select players from the active NBA roster.</p>
+          <p className="text-sm text-gray-600">
+            8 Active + 2 Injured Reserve roster spots per team.
+          </p>
         </CardHeader>
       </Card>
 
       {teams.map((team) => {
-        const teamSlots = rosters.filter((r) => r.team_id === team.id);
+        const teamSlots = rosters
+          .filter((r) => r.team_id === team.id)
+          .sort((a, b) => a.slot_number - b.slot_number);
+
         return (
           <Card key={team.id}>
             <CardHeader>
@@ -270,13 +372,19 @@ export default function Rosters() {
                     >
                       <Save className="w-4 h-4 mr-1" /> Save
                     </Button>
-                    <Button size="sm" variant="outline" onClick={() => setEditingTeamId(null)}>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setEditingTeamId(null)}
+                    >
                       <X className="w-4 h-4 mr-1" /> Cancel
                     </Button>
                   </>
                 ) : (
                   <>
-                    <CardTitle className="text-lg text-green-700">{team.name}</CardTitle>
+                    <CardTitle className="text-lg text-green-700">
+                      {team.name}
+                    </CardTitle>
                     <Button
                       size="sm"
                       variant="ghost"
@@ -295,22 +403,26 @@ export default function Rosters() {
             <CardContent>
               <div className="grid grid-cols-1 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
                 {teamSlots.map((slot) => {
-                  const player = slot.player_id ? players[slot.player_id] : null;
+                  const player = slot.player_id ? playersById[String(slot.player_id)] : null;
+                  const isIR = slot.slot_number >= 9;
                   return (
                     <div
                       key={slot.id}
                       className={`border rounded-lg p-3 text-center transition ${
-                        slot.slot_number === 9
-                          ? "border-yellow-400 bg-yellow-50"
-                          : "border-gray-200"
+                        isIR ? "border-yellow-400 bg-yellow-50" : "border-gray-200"
                       }`}
                     >
                       {player ? (
                         <>
-                          <p className="font-semibold text-gray-800">{player.full_name}</p>
-                          <p className="text-xs text-gray-500">{player.team}</p>
+                          <p className="font-semibold text-gray-800">
+                            {player.full_name}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            {player.team ?? "—"}
+                          </p>
                           <p className="text-xs text-gray-400 mt-1">
-                            Added {new Date(slot.added_at || "").toLocaleDateString()}
+                            Added{" "}
+                            {new Date(slot.added_at || "").toLocaleDateString()}
                           </p>
                           <Button
                             size="sm"
@@ -323,7 +435,9 @@ export default function Rosters() {
                         </>
                       ) : (
                         <>
-                          <p className="text-gray-500 text-sm">Empty Slot</p>
+                          <p className="text-gray-500 text-sm">
+                            {isIR ? "Empty IR Slot" : "Empty Slot"}
+                          </p>
                           <Button
                             size="sm"
                             variant="outline"
@@ -334,8 +448,10 @@ export default function Rosters() {
                           </Button>
                         </>
                       )}
-                      {slot.slot_number === 9 && (
-                        <p className="text-xs font-medium text-yellow-700 mt-2">Injured Reserve</p>
+                      {isIR && (
+                        <p className="text-xs font-medium text-yellow-700 mt-2">
+                          Injured Reserve
+                        </p>
                       )}
                     </div>
                   );
@@ -362,10 +478,12 @@ export default function Rosters() {
 
             <div className="max-h-64 overflow-y-auto border-t border-gray-100 pt-2">
               {searchResults.length === 0 ? (
-                <p className="text-gray-500 text-sm text-center py-4">No players found.</p>
+                <p className="text-gray-500 text-sm text-center py-4">
+                  No players found.
+                </p>
               ) : (
                 searchResults.map((player) => {
-                  const isRostered = rosteredPlayers.has(player.id);
+                  const isRostered = rosteredPlayers.has(String(player.id));
                   return (
                     <div
                       key={player.id}
@@ -374,11 +492,13 @@ export default function Rosters() {
                           ? "bg-gray-100 text-gray-400 cursor-not-allowed"
                           : "hover:bg-green-50 cursor-pointer"
                       }`}
-                      onClick={() => !isRostered && handleAddPlayer(selectedRosterId!, player)}
+                      onClick={() =>
+                        !isRostered && handleAddPlayer(selectedRosterId!, player)
+                      }
                     >
                       <div>
                         <p className="font-medium">{player.full_name}</p>
-                        <p className="text-xs">{player.team}</p>
+                        <p className="text-xs text-gray-500">{player.team ?? "—"}</p>
                       </div>
                       {isRostered && (
                         <span className="text-[10px] bg-gray-300 text-white px-2 py-0.5 rounded-md">

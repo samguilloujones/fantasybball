@@ -13,6 +13,7 @@ import {
   LineChart,
   ClipboardList,
   LogOut,
+  UploadCloud,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { supabase } from "@/lib/supabaseClient";
@@ -47,8 +48,9 @@ export default function Sidebar({ isOpen, onClose, activePage }: SidebarProps) {
     { name: "Schedule Manager", icon: ClipboardList, path: "/schedule-manager" },
     { name: "League History", icon: Trophy, path: "/league-history" },
     { name: "Insights", icon: LineChart, path: "/insights" },
-    { name: "Settings", icon: Settings, path: "/settings" },
     { name: "Owner Bios", icon: ListChecks, path: "/owner-bios" },
+    { name: "Upload Stats", icon: UploadCloud, path: "/upload-stats" }, // 🆕 Added here
+    { name: "Settings", icon: Settings, path: "/settings" },
   ];
 
   return (
@@ -86,7 +88,10 @@ export default function Sidebar({ isOpen, onClose, activePage }: SidebarProps) {
                 {menuItems.map(({ name, icon: Icon, path }) => (
                   <li key={name}>
                     <button
-                      onClick={() => router.push(path)}
+                      onClick={() => {
+                        router.push(path);
+                        onClose();
+                      }}
                       className={`flex items-center w-full p-3 rounded-lg text-left transition-colors ${
                         activePage === path
                           ? "bg-gray-800 text-white"

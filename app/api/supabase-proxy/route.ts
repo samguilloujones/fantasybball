@@ -1,203 +1,140 @@
-import { NextResponse } from "next/server"
-import { supabase } from "@/lib/supabaseClient"
-import { createClient } from "@supabase/supabase-js"
+// -----------------------------------------------------------------------------
+// ✅ API ROUTE: /app/api/supabase-proxy
+// Safe middle layer for Supabase access from client components
+// -----------------------------------------------------------------------------
+import { NextResponse } from "next/server";
+import { supabase } from "@/lib/supabaseClient";
 
 // -----------------------------------------------------------------------------
-//  SERVER-SIDE ADMIN CLIENT — allows access to Supabase Auth users
-// -----------------------------------------------------------------------------
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
-
-// -----------------------------------------------------------------------------
-//  GET HANDLER — used for reads (fetching data)
+// 🧠 GET HANDLER — handles reads with filters, ordering, and limits
 // -----------------------------------------------------------------------------
 export async function GET(req: Request) {
-  const { searchParams } = new URL(req.url)
-  let path = searchParams.get("path")
+  const { searchParams } = new URL(req.url);
+  const path = searchParams.get("path");
+
+  console.log("Yoooo I am here")
 
   if (!path) {
-    return NextResponse.json({ error: "Missing 'path' parameter" }, { status: 400 })
+    return NextResponse.json({ error: "Missing 'path' parameter" }, { status: 400 });
   }
 
   try {
-    // 🧠 Handle Auth user requests
-    if (path === "auth_users") {
-      const { data, error } = await supabaseAdmin.auth.admin.listUsers()
-      if (error) throw error
-      return NextResponse.json(data.users)
-    }
+    // Example: path=players?select=id,full_name,team&ilike=full_name.%25curry%25&limit=10
+    const [table, queryString] = path.split("?");
+    const params = new URLSearchParams(queryString);
 
-    // 🧠 Default: regular Supabase table fetch
-    let selectClause = "*"
-    const orderClauses: { column: string; ascending: boolean }[] = []
+    const select = params.get("select") || "*";
+    let query = supabase.from(table).select(select);
 
-    // Extract embedded ?select= syntax
-    if (path.includes("?select=")) {
-      const [table, rawQuery] = path.split("?select=")
-      path = table
-      const decoded = decodeURIComponent(rawQuery || "")
-      selectClause = decoded
-    }
+    // Parse filters like season=eq.2025-2026 or full_name=ilike.%25curry%25
+    for (const [key, value] of params.entries()) {
+      if (["select", "order", "limit"].includes(key)) continue;
 
-    // Collect all order parameters (supports multiple)
-    const orderParams = searchParams.getAll("order")
-    if (orderParams.length > 0) {
-      for (const order of orderParams) {
-        const parts = order.split(".")
-        let column = parts.slice(0, -1).join(".") || order
-        const direction = parts[parts.length - 1]
-        const ascending = direction.toLowerCase() !== "desc"
-        orderClauses.push({ column, ascending })
+      // e.g. key = "season", value = "eq.2025-2026"
+      if (value.startsWith("eq.")) {
+        query = query.eq(key, value.replace("eq.", ""));
+      } else if (value.startsWith("ilike.")) {
+        query = query.ilike(key, value.replace("ilike.", ""));
       }
     }
 
-    // ✅ Build Supabase query
-    let query = supabase.from(path).select(selectClause)
-    for (const o of orderClauses) {
-      query = query.order(o.column, { ascending: o.ascending })
+    // Handle order=column.asc / column.desc
+    if (params.get("order")) {
+      const [column, direction] = params.get("order")!.split(".");
+      query = query.order(column, { ascending: direction !== "desc" });
     }
 
-    const { data, error } = await query
-    if (error) throw error
+    // Handle limit
+    if (params.get("limit")) {
+      const limitVal = Number(params.get("limit"));
+      if (!isNaN(limitVal)) query = query.limit(limitVal);
+    }
 
-    return NextResponse.json(data)
+    const { data, error } = await query;
+    if (error) throw error;
+
+    return NextResponse.json({ data });
   } catch (err: any) {
-    console.error("Supabase Proxy GET Error:", err.message)
-    return NextResponse.json({ error: err.message }, { status: 500 })
+    console.error("❌ GET /supabase-proxy error:", err.message || err);
+    return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
 
 // -----------------------------------------------------------------------------
-//  POST HANDLER — used for inserts, updates, deletes (explicit action required)
+// 🧱 POST HANDLER — handles insert, update, delete, and select operations
 // -----------------------------------------------------------------------------
 export async function POST(req: Request) {
   try {
-    const body = await req.json()
-    const { path, action, data, match } = body
+    const { path, action, data } = await req.json();
 
     if (!path || !action) {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
+      return NextResponse.json(
+        { error: "Missing 'path' or 'action' in request body" },
+        { status: 400 }
+      );
     }
 
-    // 🧠 Handle Auth user creation
-    if (path === "auth_users" && action === "insert") {
-      const { email, password } = data
-      const { data: created, error } = await supabaseAdmin.auth.admin.createUser({ email, password })
-      if (error) throw error
-      return NextResponse.json(created.user)
-    }
+    let result;
 
-    let result
     switch (action) {
+      // -----------------------------------------------------
+      // INSERT
+      // -----------------------------------------------------
       case "insert":
-        result = await supabase.from(path).insert(data)
-        break
+        result = await supabase.from(path).insert(data);
+        break;
 
+      // -----------------------------------------------------
+      // UPDATE
+      // -----------------------------------------------------
       case "update":
-        if (!match) {
-          return NextResponse.json({ error: "Missing match criteria for update" }, { status: 400 })
+        if (!data || !Array.isArray(data) || data.length === 0) {
+          return NextResponse.json(
+            { error: "Missing or invalid 'data' for update action" },
+            { status: 400 }
+          );
         }
-        result = await supabase.from(path).update(data).match(match)
-        break
 
+        const updateRow = data[0];
+        if (!updateRow.id) {
+          return NextResponse.json(
+            { error: "Missing 'id' field in update data" },
+            { status: 400 }
+          );
+        }
+
+        result = await supabase.from(path).update(updateRow).eq("id", updateRow.id);
+        break;
+
+      // -----------------------------------------------------
+      // DELETE
+      // -----------------------------------------------------
       case "delete":
-        if (!match) {
-          return NextResponse.json({ error: "Missing match criteria for delete" }, { status: 400 })
-        }
-        result = await supabase.from(path).delete().match(match)
-        break
+        result = await supabase.from(path).delete().match(data);
+        break;
 
+      // -----------------------------------------------------
+      // SELECT (Safe server-side select via POST)
+      // -----------------------------------------------------
+      case "select":
+        result = await supabase.from(path).select("*").match(data);
+        break;
+
+      // -----------------------------------------------------
+      // DEFAULT
+      // -----------------------------------------------------
       default:
-        return NextResponse.json({ error: `Invalid action: ${action}` }, { status: 400 })
+        return NextResponse.json(
+          { error: `Unsupported action: ${action}` },
+          { status: 400 }
+        );
     }
 
-    const { data: resultData, error } = result
-    if (error) throw error
-    return NextResponse.json(resultData)
+    if (result.error) throw result.error;
+
+    return NextResponse.json({ success: true, data: result.data });
   } catch (err: any) {
-    console.error("Supabase Proxy POST Error:", err.message)
-    return NextResponse.json({ error: err.message }, { status: 500 })
-  }
-}
-
-// -----------------------------------------------------------------------------
-//  PATCH HANDLER — used for direct updates (Auth + DB tables)
-// -----------------------------------------------------------------------------
-export async function PATCH(req: Request) {
-  try {
-    const { searchParams } = new URL(req.url)
-    const path = searchParams.get("path")
-    if (!path) {
-      return NextResponse.json({ error: "Missing 'path' parameter" }, { status: 400 })
-    }
-
-    const body = await req.json()
-
-    // 🧠 Auth user updates (email/password)
-    if (path === "auth_users") {
-      const { id, email, password } = body
-      if (!id) return NextResponse.json({ error: "Missing user ID" }, { status: 400 })
-
-      const updates: any = {}
-      if (email) updates.email = email
-      if (password) updates.password = password
-
-      const { data, error } = await supabaseAdmin.auth.admin.updateUserById(id, updates)
-      if (error) throw error
-
-      return NextResponse.json({ success: true, user: data.user })
-    }
-
-    // 🧠 Default table update logic
-    const [table, filterString] = path.split("?")
-    const match: Record<string, any> = {}
-
-    if (filterString) {
-      const filters = filterString.split("&")
-      for (const f of filters) {
-        const [key, value] = f.split("=eq.")
-        if (key && value) match[key] = value
-      }
-    }
-
-    const { data, error } = await supabase.from(table).update(body).match(match)
-    if (error) throw error
-
-    return NextResponse.json(data)
-  } catch (err: any) {
-    console.error("Supabase Proxy PATCH Error:", err.message)
-    return NextResponse.json({ error: err.message }, { status: 500 })
-  }
-}
-
-// -----------------------------------------------------------------------------
-//  DELETE HANDLER — used for removing Auth users (or DB rows)
-// -----------------------------------------------------------------------------
-export async function DELETE(req: Request) {
-  try {
-    const { path } = Object.fromEntries(new URL(req.url).searchParams)
-    const body = await req.json()
-    const { id, match } = body
-
-    if (path === "auth_users") {
-      if (!id) return NextResponse.json({ error: "Missing user ID" }, { status: 400 })
-      const { error } = await supabaseAdmin.auth.admin.deleteUser(id)
-      if (error) throw error
-      return NextResponse.json({ success: true })
-    }
-
-    // Default table deletion
-    if (!path) return NextResponse.json({ error: "Missing 'path' parameter" }, { status: 400 })
-    if (!match) return NextResponse.json({ error: "Missing match criteria" }, { status: 400 })
-
-    const { data, error } = await supabase.from(path).delete().match(match)
-    if (error) throw error
-
-    return NextResponse.json(data)
-  } catch (err: any) {
-    console.error("Supabase Proxy DELETE Error:", err.message)
-    return NextResponse.json({ error: err.message }, { status: 500 })
+    console.error("❌ POST /supabase-proxy error:", err.message || err);
+    return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }

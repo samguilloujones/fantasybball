@@ -1,0 +1,45 @@
+from basketball_reference_web_scraper import client
+from supabase import create_client, Client
+import pandas as pd
+from datetime import datetime
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+supabase: Client = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
+
+def fetch_and_upload_season(season_end_year: int):
+    print(f"📊 Fetching player game logs for season ending {season_end_year}...")
+    games = client.season_player_game_logs(season_end_year=season_end_year)
+
+    df = pd.DataFrame(games)
+    print(f"✅ Retrieved {len(df)} game records")
+
+    # Normalize key fields
+    df["date"] = pd.to_datetime(df["date"])
+    df["points"] = df["points"].astype(int)
+    df["slug"] = df["slug"].astype(str)
+
+    # Convert to records for Supabase insert
+    rows = [
+        {
+            "player_id": row["slug"],  # ex: curryst01
+            "game_date": row["date"].strftime("%Y-%m-%d"),
+            "points": row["points"],
+        }
+        for _, row in df.iterrows()
+    ]
+
+    print(f"🚀 Uploading {len(rows)} rows to Supabase...")
+    for chunk_start in range(0, len(rows), 500):
+        chunk = rows[chunk_start : chunk_start + 500]
+        supabase.table("player_game_stats").upsert(chunk).execute()
+
+    print("✅ Upload complete!")
+
+
+if __name__ == "__main__":
+    # Example: get last 2 seasons
+    for year in [2024, 2025]:
+        fetch_and_upload_season(year)
