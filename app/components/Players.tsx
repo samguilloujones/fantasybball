@@ -64,8 +64,10 @@ export default function Players({ onNavigate, onAddPlayer }: PlayersProps) {
       console.log("blahhh")
 
       const res = await fetch(
-        `/api/supabase-proxy?path=players?select=id,full_name,team,fantasy_team_id,active&limit=500`
+        `/api/supabase-proxy?path=players`
       );
+
+      console.log(`Yo ${JSON.stringify(res)}`)
 
       if (!res.ok) throw new Error(`Failed to fetch players: ${res.statusText}`);
 
@@ -122,7 +124,7 @@ export default function Players({ onNavigate, onAddPlayer }: PlayersProps) {
 
   useEffect(() => {
     loadPlayers();
-    loadTeams();
+    //loadTeams();
   }, []);
 
   // ---------------------------------------------------------

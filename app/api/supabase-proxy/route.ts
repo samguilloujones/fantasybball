@@ -12,8 +12,6 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const path = searchParams.get("path");
 
-  console.log("Yoooo I am here")
-
   if (!path) {
     return NextResponse.json({ error: "Missing 'path' parameter" }, { status: 400 });
   }
@@ -25,6 +23,8 @@ export async function GET(req: Request) {
 
     const select = params.get("select") || "*";
     let query = supabase.from(table).select(select);
+    
+    console.log(`query: ${JSON.stringify(query)}`)
 
     // Parse filters like season=eq.2025-2026 or full_name=ilike.%25curry%25
     for (const [key, value] of params.entries()) {
@@ -51,6 +51,7 @@ export async function GET(req: Request) {
     }
 
     const { data, error } = await query;
+    console.log(`Data: ${JSON.stringify(error)}`)
     if (error) throw error;
 
     return NextResponse.json({ data });

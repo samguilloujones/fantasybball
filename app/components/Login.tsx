@@ -18,30 +18,30 @@ export default function Login() {
     setError(null);
 
     try {
-      const response = await fetch("/api/supabase-auth", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      });
+      // const response = await fetch("/api/supabase-auth", {
+      //   method: "POST",
+      //   headers: { "Content-Type": "application/json" },
+      //   body: JSON.stringify({ email, password }),
+      // });
 
-      let data;
-      try {
-        data = await response.json();
-      } catch {
-        throw new Error("Invalid JSON response from server.");
-      }
+      // let data;
+      // try {
+      //   data = await response.json();
+      // } catch {
+      //   throw new Error("Invalid JSON response from server.");
+      // }
 
-      if (!response.ok) {
-        const msg =
-          data?.error_description ||
-          data?.message ||
-          "Failed to sign in. Please check credentials.";
-        throw new Error(msg);
-      }
+      // if (!response.ok) {
+      //   const msg =
+      //     data?.error_description ||
+      //     data?.message ||
+      //     "Failed to sign in. Please check credentials.";
+      //   throw new Error(msg);
+      // }
 
-      console.log("✅ Login successful:", data);
+      // console.log("✅ Login successful:", data);
 
-      localStorage.setItem("supabase_token", data.access_token);
+      // localStorage.setItem("supabase_token", data.access_token);
       router.push("/landing");
     } catch (err: any) {
       console.error("Login error:", err);

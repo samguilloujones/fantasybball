@@ -3,8 +3,8 @@ console.log("Supabase URL:", process.env.NEXT_PUBLIC_SUPABASE_URL);
 import { createClient } from "@supabase/supabase-js"
 
 // ✅ Use environment variables for Supabase credentials
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+const SUPABASE_URL = "https://jumgxcucrwmhqkfngpjt.supabase.co"
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp1bWd4Y3VjcndtaHFrZm5ncGp0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE2MTI4MDMsImV4cCI6MjA3NzE4ODgwM30.UHSiv9NfT78_-8ktD71lJIke6qde7S4fdTLI_yuvvW0"
 
 console.log("✅ Supabase URL:", process.env.NEXT_PUBLIC_SUPABASE_URL)
 console.log("✅ Supabase Key:", process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? "Loaded" : "Missing")
