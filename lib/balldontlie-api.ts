@@ -11,15 +11,15 @@ export interface Player {
   draft_year: number | null
   draft_round: number | null
   draft_number: number | null
-  team: {
-    id: number
-    conference: string
-    division: string
-    city: string
-    name: string
-    full_name: string
-    abbreviation: string
-  }
+  // team: {
+  //   id: number
+  //   conference: string
+  //   division: string
+  //   city: string
+  //   name: string
+  //   full_name: string
+  //   abbreviation: string
+  // }
 }
 
 export interface PlayerStats {

@@ -44,7 +44,7 @@ export default function Standings() {
 
 
       if (error) throw error;
-      setTeams(data || []);
+      //setTeams(data || []);
     } catch (err: any) {
       setError(err.message)
     } finally {

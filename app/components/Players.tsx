@@ -21,10 +21,9 @@ import {
   SelectContent,
   SelectItem,
 } from "@/components/ui/select";
-import PlayerPopupV2 from "./PlayerPopupV2";
 
 export type Player = {
-  id: string;
+  id: number;
   full_name: string;
   first_name: string;
   last_name: string;
@@ -32,6 +31,15 @@ export type Player = {
   fantasy_team?: string | null;
   fantasy_team_id?: string | null;
   active?: boolean;
+  position: string | "null";
+  height: string | "null";
+  weight: string | "null";
+  jersey_number: string | "null";
+  college: string | "null";
+  country: string | "null";
+  draft_round: number | 0;
+  draft_year: number | 0;
+  draft_number: number | 0;
 };
 
 interface PlayersProps {
@@ -64,7 +72,7 @@ export default function Players({ onNavigate, onAddPlayer }: PlayersProps) {
       console.log("blahhh")
 
       const res = await fetch(
-        `/api/supabase-proxy?path=players`
+        `/api/supabase-proxy?path=playersV2?select=id,full_name,team,is_active&limit=500`
       );
 
       console.log(`Yo ${JSON.stringify(res)}`)
@@ -372,7 +380,7 @@ export default function Players({ onNavigate, onAddPlayer }: PlayersProps) {
       )}
 
       {selectedPlayer && (
-        <PlayerPopupV2 player={selectedPlayer} onClose={handleClosePopup} />
+        <PlayerPopup player={selectedPlayer} onClose={handleClosePopup} />
       )}
 
       {/* ✅ Assign-to-team Modal */}

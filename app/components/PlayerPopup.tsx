@@ -35,6 +35,16 @@ export default function PlayerPopup({ player, onClose }: PlayerPopupProps) {
 
       // 2️⃣ If all cached, no fetch required
 
+      console.log("I am here")
+
+      const res = await fetch(
+        `/api/player-stats`,
+        { 
+          method: 'GET' // <-- EXPLICITLY set the method
+        }
+      );
+
+      console.log(`Yo ${JSON.stringify(res)}`)
 
       const fetchedSeasons: any[] = [];
 
@@ -42,16 +52,16 @@ export default function PlayerPopup({ player, onClose }: PlayerPopupProps) {
       for (const season of seasonsToFetch) {
         console.log("Get me some stats")
         const isV2 = season >= 2024;
-        const baseUrl = isV2
-          ? "https://api.balldontlie.io/v2"
-          : "https://www.balldontlie.io/api/v1";
+        // const baseUrl = isV2
+        //   ? "https://api.balldontlie.io/v2"
+        //   : "https://www.balldontlie.io/api/v1";
 
-        const url = `${baseUrl}/season_averages?season=${season}&player_ids[]=${player.id}`;
-        const res = await fetch(url, {
-          headers: isV2
-            ? { Authorization: `Bearer ${process.env.NEXT_PUBLIC_BDL_API_KEY ?? ""}` }
-            : {},
-        });
+        // const url = `${baseUrl}/season_averages?season=${season}&player_ids[]=${player.id}`;
+        // const res = await fetch(url, {
+        //   headers: isV2
+        //     ? { Authorization: `Bearer ${process.env.NEXT_PUBLIC_BDL_API_KEY ?? ""}` }
+        //     : {},
+        // });
 
         if (!res.ok) {
           console.error(`❌ Fetch failed for ${season} (${isV2 ? "v2" : "v1"}):`, res.status);
@@ -103,7 +113,7 @@ export default function PlayerPopup({ player, onClose }: PlayerPopupProps) {
               {player.first_name} {player.last_name}
             </h2>
             <div className="flex flex-wrap gap-2 mt-1 text-sm text-gray-600">
-              <span>{player.team.full_name}</span>
+              <span>{"Team"}</span>
               {player.jersey_number && (
                 <>
                   <span>•</span>

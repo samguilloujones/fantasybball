@@ -95,7 +95,7 @@ export default function LeagueHistory() {
         .eq("year", selectedSeason)
         .order("year", { ascending: false })
       if (error) console.error("Error fetching champions:", error)
-      else setChampions(data)
+      //else setChampions(data)
     }
     fetchChampions()
   }, [selectedSeason])
