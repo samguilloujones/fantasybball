@@ -25,7 +25,7 @@ export default function PlayerPopup({ player, onClose }: PlayerPopupProps) {
     setError(null);
 
     const seasonsToFetch = [2024];
-    const season = '2025-2026';
+    const season = '2025-26';
     const playerName = `${player.first_name} ${player.last_name}`;
 
     try {

@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  nextjs-app:
+    # Use the local Dockerfile we just created
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # Map the container port 3000 to the host port 3000
+    ports:
+      - "3000:3000"
+    # Mount source code for live development/debugging (optional for production, but helpful)
+    # Volumes are only truly necessary here if you want to mount persistent data.
+    # For Next.js development, you would typically use bind mounts, but since
+    # this Dockerfile runs 'npm run build', we stick to the production run.
+    # If you were running 'npm run dev' inside the container, you would add:
+    # volumes:
+    #   - .:/app
+    environment:
+      # Next.js specific environment variables can go here
+      - NODE_ENV=production
