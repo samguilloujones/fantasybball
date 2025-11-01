@@ -10,8 +10,8 @@ export async function GET(req: Request) {
   try {
     // Example: Read arguments from the request body/query if needed
     const { searchParams } = new URL(req.url);
-    const player = 'Stephen Curry'
-    const season = '2025-26'
+    const player = searchParams.get("player")
+    const season = searchParams.get("season")
     const regSeason = '2025-2026'
 
     console.log(`Reg: ${JSON.stringify(regSeason)}`)
