@@ -25,6 +25,8 @@ export default function PlayerPopup({ player, onClose }: PlayerPopupProps) {
     setError(null);
 
     const seasonsToFetch = [2024];
+    const season = '2025-2026';
+    const playerName = `${player.first_name} ${player.last_name}`;
 
     try {
       const cachedSeasons: any[] = [];
@@ -38,13 +40,15 @@ export default function PlayerPopup({ player, onClose }: PlayerPopupProps) {
       console.log("I am here")
 
       const res = await fetch(
-        `/api/player-stats`,
+        `/api/player-stats?player=${encodeURIComponent(playerName)}&season=${encodeURIComponent(season)}`,
         { 
           method: 'GET' // <-- EXPLICITLY set the method
         }
       );
 
-      console.log(`Yo ${JSON.stringify(res)}`)
+      const playerData = await res.json();
+
+      console.log(`Yo ${playerData.PLAYER_NAME}`)
 
       const fetchedSeasons: any[] = [];
 
@@ -68,18 +72,18 @@ export default function PlayerPopup({ player, onClose }: PlayerPopupProps) {
           continue;
         }
 
-        const result = await res.json();
-        const seasonData = result?.data?.[0];
-        if (!seasonData) continue;
+        //const result = await res.json();
+        //const seasonData = result?.data?.[0];
+        //if (!seasonData) continue;
 
         const payload = {
           player_id: player.id,
           season,
-          pts: seasonData.pts ?? 0,
-          fg_pct: seasonData.fg_pct ?? 0,
-          fg3_pct: seasonData.fg3_pct ?? 0,
-          ft_pct: seasonData.ft_pct ?? 0,
-          games_played: seasonData.games_played ?? 0,
+          pts: (playerData.PTS / playerData.GP),
+          fg_pct: playerData.FG_PCT ?? 0,
+          fg3_pct: playerData.FG3_PCT ?? 0,
+          ft_pct: playerData.FT_PCT ?? 0,
+          games_played: playerData.GP ?? 0,
           last_updated: new Date().toISOString(),
         };
 
