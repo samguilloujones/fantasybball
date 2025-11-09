@@ -75,7 +75,7 @@ export default function MatchupDetails() {
         if (!grouped[r.team_id]) grouped[r.team_id] = [];
         grouped[r.team_id].push({
           id: r.player_id,
-          full_name: r.players.full_name,
+          full_name: 'r.players.full_name,'
         });
       });
       setRosters(grouped);

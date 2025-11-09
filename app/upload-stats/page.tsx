@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import Papa from "papaparse";
+// import Papa from "papaparse";
 import Fuse from "fuse.js";
 import { supabase } from "@/lib/supabaseClient";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
@@ -47,16 +47,16 @@ export default function UploadStats() {
     if (!file) return;
     setStatus("📊 Parsing CSV...");
 
-    Papa.parse(file, {
-      header: true,
-      skipEmptyLines: true,
-      complete: async (results) => {
-        console.log("🧩 CSV Headers:", results.meta.fields);
-        console.log("🧩 First row sample:", results.data[0]);
-        const data = results.data.map((r: any) => normalizeHeaders(r));
-        await mapPlayersToIds(data);
-      },
-    });
+    // Papa.parse(file, {
+    //   header: true,
+    //   skipEmptyLines: true,
+    //   complete: async (results) => {
+    //     console.log("🧩 CSV Headers:", results.meta.fields);
+    //     console.log("🧩 First row sample:", results.data[0]);
+    //     const data = results.data.map((r: any) => normalizeHeaders(r));
+    //     await mapPlayersToIds(data);
+    //   },
+    // });
   };
 
   // ---------------------------------------------------------

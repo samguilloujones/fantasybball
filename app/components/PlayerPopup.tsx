@@ -25,6 +25,8 @@ export default function PlayerPopup({ player, onClose }: PlayerPopupProps) {
     setError(null);
 
     const seasonsToFetch = [2024];
+    const season = '2025-26';
+    const playerName = `${player.first_name} ${player.last_name}`;
 
     try {
       const cachedSeasons: any[] = [];
@@ -35,6 +37,18 @@ export default function PlayerPopup({ player, onClose }: PlayerPopupProps) {
 
       // 2️⃣ If all cached, no fetch required
 
+      console.log("I am here")
+
+      const res = await fetch(
+        `/api/player-stats?player=${encodeURIComponent(playerName)}&season=${encodeURIComponent(season)}`,
+        { 
+          method: 'GET' // <-- EXPLICITLY set the method
+        }
+      );
+
+      const playerData = await res.json();
+
+      console.log(`Yo ${playerData.PLAYER_NAME}`)
 
       const fetchedSeasons: any[] = [];
 
@@ -42,34 +56,34 @@ export default function PlayerPopup({ player, onClose }: PlayerPopupProps) {
       for (const season of seasonsToFetch) {
         console.log("Get me some stats")
         const isV2 = season >= 2024;
-        const baseUrl = isV2
-          ? "https://api.balldontlie.io/v2"
-          : "https://www.balldontlie.io/api/v1";
+        // const baseUrl = isV2
+        //   ? "https://api.balldontlie.io/v2"
+        //   : "https://www.balldontlie.io/api/v1";
 
-        const url = `${baseUrl}/season_averages?season=${season}&player_ids[]=${player.id}`;
-        const res = await fetch(url, {
-          headers: isV2
-            ? { Authorization: `Bearer ${process.env.NEXT_PUBLIC_BDL_API_KEY ?? ""}` }
-            : {},
-        });
+        // const url = `${baseUrl}/season_averages?season=${season}&player_ids[]=${player.id}`;
+        // const res = await fetch(url, {
+        //   headers: isV2
+        //     ? { Authorization: `Bearer ${process.env.NEXT_PUBLIC_BDL_API_KEY ?? ""}` }
+        //     : {},
+        // });
 
         if (!res.ok) {
           console.error(`❌ Fetch failed for ${season} (${isV2 ? "v2" : "v1"}):`, res.status);
           continue;
         }
 
-        const result = await res.json();
-        const seasonData = result?.data?.[0];
-        if (!seasonData) continue;
+        //const result = await res.json();
+        //const seasonData = result?.data?.[0];
+        //if (!seasonData) continue;
 
         const payload = {
           player_id: player.id,
           season,
-          pts: seasonData.pts ?? 0,
-          fg_pct: seasonData.fg_pct ?? 0,
-          fg3_pct: seasonData.fg3_pct ?? 0,
-          ft_pct: seasonData.ft_pct ?? 0,
-          games_played: seasonData.games_played ?? 0,
+          pts: (playerData.PTS / playerData.GP),
+          fg_pct: playerData.FG_PCT ?? 0,
+          fg3_pct: playerData.FG3_PCT ?? 0,
+          ft_pct: playerData.FT_PCT ?? 0,
+          games_played: playerData.GP ?? 0,
           last_updated: new Date().toISOString(),
         };
 
@@ -103,7 +117,7 @@ export default function PlayerPopup({ player, onClose }: PlayerPopupProps) {
               {player.first_name} {player.last_name}
             </h2>
             <div className="flex flex-wrap gap-2 mt-1 text-sm text-gray-600">
-              <span>{player.team.full_name}</span>
+              <span>{"Team"}</span>
               {player.jersey_number && (
                 <>
                   <span>•</span>

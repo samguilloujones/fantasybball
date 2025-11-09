@@ -1,4 +1,4 @@
-import type { Player, SeasonAverage, Stats } from "./balldontlie-api"
+import type { Player } from "./balldontlie-api"
 
 interface CachedPlayer {
   data: Player
@@ -6,12 +6,12 @@ interface CachedPlayer {
 }
 
 interface CachedStats {
-  data: Stats[]
+  data: String[]
   timestamp: number
 }
 
 interface CachedSeasonAvg {
-  data: SeasonAverage[]
+  data: String[]
   timestamp: number
 }
 
@@ -38,41 +38,41 @@ class PlayerCache {
     })
   }
 
-  // Stats caching
-  getStats(playerId: number, startDate: string, endDate: string): Stats[] | null {
-    const key = `${playerId}-${startDate}-${endDate}`
-    const cached = this.stats.get(key)
-    if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
-      return cached.data
-    }
-    return null
-  }
+  // // Stats caching
+  // getStats(playerId: number, startDate: string, endDate: string): Stats[] | null {
+  //   const key = `${playerId}-${startDate}-${endDate}`
+  //   const cached = this.stats.get(key)
+  //   if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
+  //     return cached.data
+  //   }
+  //   return null
+  // }
 
-  setStats(playerId: number, startDate: string, endDate: string, data: Stats[]) {
-    const key = `${playerId}-${startDate}-${endDate}`
-    this.stats.set(key, {
-      data,
-      timestamp: Date.now(),
-    })
-  }
+  // setStats(playerId: number, startDate: string, endDate: string, data: Stats[]) {
+  //   const key = `${playerId}-${startDate}-${endDate}`
+  //   this.stats.set(key, {
+  //     data,
+  //     timestamp: Date.now(),
+  //   })
+  // }
 
-  // Season averages caching
-  getSeasonAverages(playerId: number, season: number): SeasonAverage[] | null {
-    const key = `${playerId}-${season}`
-    const cached = this.seasonAverages.get(key)
-    if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
-      return cached.data
-    }
-    return null
-  }
+  // // Season averages caching
+  // getSeasonAverages(playerId: number, season: number): SeasonAverage[] | null {
+  //   const key = `${playerId}-${season}`
+  //   const cached = this.seasonAverages.get(key)
+  //   if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
+  //     return cached.data
+  //   }
+  //   return null
+  // }
 
-  setSeasonAverages(playerId: number, season: number, data: SeasonAverage[]) {
-    const key = `${playerId}-${season}`
-    this.seasonAverages.set(key, {
-      data,
-      timestamp: Date.now(),
-    })
-  }
+  // setSeasonAverages(playerId: number, season: number, data: SeasonAverage[]) {
+  //   const key = `${playerId}-${season}`
+  //   this.seasonAverages.set(key, {
+  //     data,
+  //     timestamp: Date.now(),
+  //   })
+  // }
 
   // Clear all cache
   clear() {

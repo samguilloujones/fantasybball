@@ -432,7 +432,7 @@ export default function ScheduleManager() {
                         <Button
                           variant="ghost"
                           className="text-red-600"
-                          onClick={() => handleDelete(g.id)}
+                          //onClick={() => handleDelete(g.id)}
                         >
                           <Trash2 className="w-4 h-4" />
                         </Button>

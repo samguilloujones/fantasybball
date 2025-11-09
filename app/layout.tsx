@@ -192,7 +192,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               isOpen={isSidebarOpen}
               onClose={handleNavigate}
               activePage={pathname}
-              userRole={role}
+              //userRole={role}
             />
           )}
 
