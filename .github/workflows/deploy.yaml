@@ -1,0 +1,58 @@
+name: Deploy to Cloud Run
+
+on:
+  push:
+    branches:
+      - main # Trigger on pushes to the main branch
+
+env:
+  PROJECT_ID: sams-fantasy-bball
+  SERVICE_NAME: sams-fantasy-bball
+  REGION: us-east1
+  IMAGE_REPO: sams-fantasy-bbal-repo
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: 'read'
+      id-token: 'write' # Required for Workload Identity Federation
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # 1. Authenticate to Google Cloud
+      - name: Google Auth
+        id: auth
+        uses: 'google-github-actions/auth@v2'
+        with:
+          # Replace with the Service Account email created for WIF
+          workload_identity_provider: 'projects/1012744883725/locations/global/workloadIdentityPools/github-pool/subject/SUBJECT_ATTRIBUTE_VALUE'
+          service_account: 'github-action-deployer@sams-fantasy-bball.iam.gserviceaccount.com'
+
+      # 2. Configure Docker to authenticate to Artifact Registry
+      - name: Set up Docker to use Artifact Registry
+        uses: 'google-github-actions/setup-gcloud@v2'
+        with:
+          install-components: 'cloud-run'
+
+      - name: Docker Login to Artifact Registry
+        run: gcloud auth configure-docker ${REGION}-docker.pkg.dev
+
+      # 3. Build and Push the Docker image
+      - name: Build and Push Docker Image
+        run: |
+          IMAGE_NAME=${REGION}-docker.pkg.dev/${PROJECT_ID}/${IMAGE_REPO}/${SERVICE_NAME}:${{ github.sha }}
+          docker build . --tag $IMAGE_NAME
+          docker push $IMAGE_NAME
+        
+      # 4. Deploy to Cloud Run
+      - name: Deploy to Cloud Run
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: ${{ env.SERVICE_NAME }}
+          region: ${{ env.REGION }}
+          image: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.IMAGE_REPO }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
+          # Use the platform if deploying a container that is not a web service (e.g., jobs)
+          # platform: managed
