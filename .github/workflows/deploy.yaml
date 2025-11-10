@@ -22,17 +22,14 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # 1. Authenticate to Google Cloud
-      - name: Google Auth
+      - name: Authenticate to Google Cloud
         id: auth
         uses: 'google-github-actions/auth@v2'
         with:
-          # Replace with the Service Account email created for WIF
-          workload_identity_provider: 'projects/1012744883725/locations/global/workloadIdentityPools/github-pool/subject/SUBJECT_ATTRIBUTE_VALUE'
-          service_account: 'github-action-deployer@sams-fantasy-bball.iam.gserviceaccount.com'
+          credentials_json: '${{ secrets.GCP_SA_KEY}}'
+          proejct_id: '${{ env.PROJECT_ID }}'
 
-      # 2. Configure Docker to authenticate to Artifact Registry
-      - name: Set up Docker to use Artifact Registry
+      - name: Set up Cloud SDK
         uses: 'google-github-actions/setup-gcloud@v2'
         with:
           install-components: 'cloud-run'
